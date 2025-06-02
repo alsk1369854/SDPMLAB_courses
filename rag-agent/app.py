@@ -116,8 +116,27 @@ def get_random_question() -> str:
     return random.choice(questions)
 
 # Gradio Interface setup
-with gr.Blocks() as demo:
-    gr.Markdown("# RAG Agent Interface")
+with gr.Blocks(title="RAG Agent Demo") as demo:
+    with gr.Row():
+        with gr.Column(scale=2):
+            gr.Markdown("# RAG Agent Interface")
+        with gr.Column(scale=1):
+            gr.HTML("""
+                <a href="https://github.com/alsk1369854/SDPMLAB_courses/tree/master/rag-agent" target="_blank" style="text-decoration: none;">
+                    <button style="
+                        background-color: #24292e;
+                        color: white;
+                        width: 100%;
+                        padding: 10px 20px;
+                        font-size: 16px;
+                        border: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                    ">
+                        🔗 View on GitHub
+                    </button>
+                </a>
+            """)
     with gr.Row():
         with gr.Column(scale=2):
             gr.Markdown("## Agent Chat")
