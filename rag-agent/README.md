@@ -1,7 +1,7 @@
 # RAG Agent
-基於檢索增強生成(RAG)與大型語言模型(LLM)打造的AI代理，具網路搜尋與私有知識檢索功能，並且具有自我檢驗與逐步優化答案的能力。
+RAG Agent 是一款結合檢索增強生成(Retrieval-Augmented Generation, RAG)與大型語言模型(Large Language Model, LLM)的智慧代理(AI Agent)，具備網路搜尋、私有知識檢索與迭代優化回答的能力。
 
-## 架構
+## Workflow
 <image src="https://raw.githubusercontent.com/alsk1369854/SDPMLAB_courses/refs/heads/master/rag-agent/docs/workflow.png" alt="workflow.png">
 
 
@@ -19,6 +19,9 @@ pip freeze > requirements.txt
 ```bash
 # run
 docker-compose up -d --build
+open http://localhost:18080
+
+# check logs
 docker-compose logs -f
 
 # restart
