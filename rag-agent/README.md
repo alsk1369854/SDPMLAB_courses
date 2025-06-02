@@ -18,7 +18,7 @@ pip freeze > requirements.txt
 ### Docker
 ```bash
 # run
-docker-compose up -d --build
+docker-compose up -d --buildg
 open http://localhost:18080
 
 # check logs
