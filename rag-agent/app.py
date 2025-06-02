@@ -1,18 +1,20 @@
 import gradio as gr
 import uuid
+import faiss
+import os
+import random
 from typing import Generator, Any
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
-from modules.graph import create_graph, vector_store, text_spliter
+from langchain_community.vectorstores import FAISS
+from langchain_community.docstore.in_memory import InMemoryDocstore
+from modules.graph import create_graph, text_spliter, embed
+
 
 graph = create_graph()
-# for event in graph.stream({"question": "高雄天氣"}, stream_mode="debug"):
-#     print(event)
 
-def run_refresh_rag_index(files) -> str:
-    # vector_store.index.reset() # 清空向量索引
-    # vector_store.docstore._dict.clear()  # 清空文檔存儲
-    # vector_store.index_to_docstore_id.clear()  # 清空索引對應表
-    for file_path in files:
+def update_rag_docs(vector_store, file_paths: list[str]) -> None:
+    for file_path in file_paths:
+        file_name = file_path.split("/")[-1]
         try:
             if file_path.lower().endswith(".txt") or file_path.lower().endswith(".md"):
                 loader = TextLoader(file_path)
@@ -24,15 +26,26 @@ def run_refresh_rag_index(files) -> str:
             documents = loader.load()
             chunks = text_spliter.split_documents(documents)
             uuids = [str(uuid.uuid4()) for _ in range(len(chunks))]
-            vector_store.add_documents(documents=chunks, ids=uuids)
+            vector_store.add_documents(documents=chunks, ids=uuids, matedate={"file_name": file_name})
         except Exception as e:
             return f"Error: {e}"
 
-    # vector_store.save_local("faiss_db")
-    return "Sucessfully"
+def create_vector_store(file_paths: list[str]) -> FAISS:
+    vector_store = FAISS(
+        embedding_function=embed,
+        index=faiss.IndexFlatL2(len(embed.embed_query("index"))),
+        docstore=InMemoryDocstore(),
+        index_to_docstore_id={},
+    )
+    update_rag_docs(vector_store, file_paths)
+    return vector_store
 
-def run_agent(question: str, history: list[list[str]]) -> Generator[tuple[str, str], Any, None]:
-    inputs = {"question": question, "max_documents": 5}
+def run_agent(vector_store: FAISS, question: str) -> Generator[tuple[str, str], Any, None]:
+    inputs = {
+        "question": question, 
+        "vector_store": vector_store,
+        "max_reference_documents": 5, 
+    }
 
     docs_tracked = False
     debug_trace = "\n\n===== Trace Start =====\n\n"
@@ -50,20 +63,33 @@ def run_agent(question: str, history: list[list[str]]) -> Generator[tuple[str, s
             if node_name == "answer_generation" and not docs_tracked:
                 docs_tracked = True
                 documents = state["documents"]
-                context = ""
+
+                doc_texts = []
                 for i, doc in enumerate(documents):
-                    source_type = 'web' if 'link' in doc.get('metadata') else 'retrieval'
-                    text = doc["page_content"]
-                    context += f"{i+1}. Document(type={source_type}, text={text})\n"
-                debug_trace += f"\n\n@Documents:\n{context}\n"
+                    source_from = "web" if "link" in doc.get("metadata") else "local"
+                    doc_texts.append(f"{i+1}. Document(from={source_from}, text={doc.get('page_content', '')})")
+
+                context = '\n\n'.join(doc_texts)
+                debug_trace += f"\n\n@ Documents:\n{context}"
+
 
         elif event_type == "task_result":
             state = {k:v for k, v in payload["result"]}
 
+            if node_name == "retrieve_documents":
+                query = state["retrieve_query"]
+                debug_trace += f"\n\n@ {node_title}\n"
+                debug_trace += f"Query:\n{query}\n"
+
+            if node_name == "web_search":
+                query = state["web_search_query"]
+                debug_trace += f"\n\n@ {node_title}\n"
+                debug_trace += f"Query:\n{query}\n"
+
             # 追蹤 Agent 的回答生成
             if node_name == "answer_generation":
                 answer = state["answer"]
-                debug_trace += f"\n\n@{node_title}\n"
+                debug_trace += f"\n\n@ {node_title}\n"
                 debug_trace += f"Answer:\n{answer}\n"
                 final_answer = answer
 
@@ -71,7 +97,7 @@ def run_agent(question: str, history: list[list[str]]) -> Generator[tuple[str, s
             if node_name == "answer_guard":
                 retry = state["retry"]
                 explanation = state["explanation"]
-                debug_trace += f"\n\n@{node_title}\n"
+                debug_trace += f"\n\n@ {node_title}\n"
                 debug_trace += f"Retry: {retry}\n"
                 debug_trace += f"Explanation:\n{explanation}\n"
                 final_answer = answer
@@ -81,47 +107,60 @@ def run_agent(question: str, history: list[list[str]]) -> Generator[tuple[str, s
     debug_trace += "\n\n===== Trace End =====\n\n"
     yield final_answer, debug_trace
 
+def get_random_question() -> str:
+    questions = [
+        "今天高雄天氣如何？",
+        "目前新台幣對美元匯率是多少？",
+        "整理最近的 AI 相關新聞",
+    ]
+    return random.choice(questions)
+
 # Gradio Interface setup
 with gr.Blocks() as demo:
     gr.Markdown("# RAG Agent Interface")
-
     with gr.Row():
         with gr.Column(scale=2):
             gr.Markdown("## Agent Chat")
-            trace_chatbot = gr.Chatbot(label="Chat", type="messages")
-            question_input = gr.Textbox(show_label=False, placeholder="Enter your question...")
-
-            def on_input_submit(question: str, history: list[dict]):
-                return "", [{"role": "user", "content": question}]
-
-            def wrapped_run_agent(history: list[dict]) -> Generator[dict, Any, None]:
-                question = history[0]["content"]
-                history.append({"role": "assistant", "content": ""})
-                final_ans = ""
-                for final_ans, debug_trace in run_agent(question, history):
-                    history[-1]['content'] = debug_trace
-                    final_ans = final_ans
-                    yield history
-
-                history[-1]['content'] += f"\n@Final Answer:\n{final_ans}\n"
-                yield history
-
-            question_input.submit(
-                on_input_submit,
-                inputs=[question_input, trace_chatbot],
-                outputs=[question_input, trace_chatbot],
-                queue=False
-            ).then(
-                wrapped_run_agent,
-                inputs=trace_chatbot,
-                outputs=trace_chatbot,
-            )
+            final_answer = gr.Textbox(show_label=True, label="Final Answer", interactive=False)
+            trace_chatbot = gr.Chatbot(label="Agent Trace", type="messages")
+            question_input = gr.Textbox(show_label=False, placeholder="Enter your question...", value=get_random_question())
 
         with gr.Column(scale=1):
             gr.Markdown("## Knowledge Files")
+            download_demo = gr.DownloadButton(label="DEMO_RAG_學年開課.md", value="./DEMO_RAG_學年開課.md")
             file_upload = gr.File(label="Upload Knowledge Documents (.pdf, .txt, .md)", file_count="multiple", type="filepath")
-            refresh_status = gr.Textbox(label="Refresh Status", interactive=False)
-            refresh_button = gr.Button("Refresh RAG Index")
-            refresh_button.click(fn=run_refresh_rag_index, inputs=file_upload, outputs=refresh_status)
+    
+    download_demo.click(lambda: "有哪些課程是由資訊工程學系開設的？", None, question_input)
 
-demo.launch(server_name="0.0.0.0", server_port=18080, share=True)
+    def on_question_input_submit(question: str, history: list[dict]) -> tuple[str, list[dict]]:
+        return get_random_question(), [{"role": "user", "content": question}]
+    
+    def answer_generator(file_paths: list[str] | None, history: list[dict]) -> Generator[tuple[str, list[dict]], None, None]:
+        file_paths =  [] if file_paths is None else file_paths
+        vector_store = create_vector_store(file_paths)
+        question = history[0]["content"]
+        history.append({"role": "assistant", "content": ""})
+        for final_ans, debug_trace in run_agent(vector_store, question):
+            history[-1]['content'] = debug_trace
+            final_ans = final_ans
+            yield "", history
+
+        history[-1]['content'] += f"\n@ Final Answer:\n{final_ans}\n"
+        yield final_ans, history
+
+    question_input.submit(
+        on_question_input_submit,
+        inputs=[question_input, trace_chatbot],
+        outputs=[question_input, trace_chatbot],
+        queue=False,
+    ).then(
+        answer_generator,
+        inputs=[file_upload, trace_chatbot],
+        outputs=[final_answer, trace_chatbot],
+    )
+
+
+if __name__ == "__main__":
+    # for event in graph.stream({"question": "今天高雄天氣如何？"}, stream_mode="debug"):
+    #     print(event)
+    demo.launch(server_name="0.0.0.0", server_port=18080, share=True)
