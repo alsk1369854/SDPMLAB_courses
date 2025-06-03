@@ -1,19 +1,16 @@
 import os
-import faiss
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import List, Annotated, Literal, Any
+from typing import Literal, Any
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 from langchain_community.vectorstores import FAISS
-from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_community.utilities import SearxSearchWrapper
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import ChatOpenAI
 from modules.embeddings import CustomOpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
-from langchain.schema import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
 SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8080")
@@ -24,7 +21,7 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "text-embedding-3-small")
 
 # SEARXNG_BASE_URL = "http://127.0.0.1:8080"
 # OPENAI_BASE_URL = "http://10.1.1.68:80/v1"
-# OPENAI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NDI3NDQ4NzAsIm5hbWUiOiJhZG1pbiJ9.dnn3Cl8LwJh7fFuLufARoz1evzEBKf9Gfr3n1hHDgN0"
+# OPENAI_API_KEY = "..."
 # CHAT_MODEL = "gemma3:12b"
 # EMBED_MODEL = "all-minilm:22m"
 

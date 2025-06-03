@@ -26,4 +26,6 @@ services:
       - OPENAI_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NDI3NDQ4NzAsIm5hbWUiOiJhZG1pbiJ9.dnn3Cl8LwJh7fFuLufARoz1evzEBKf9Gfr3n1hHDgN0
       - CHAT_MODEL=gemma3:12b
       - EMBED_MODEL=all-minilm:22m
+      # ROOT_PATH(Option) 資源請求的根路徑: 適用於向代理多服務情境
+      - ROOT_PATH=/rag-agent-demo
     restart: unless-stopped

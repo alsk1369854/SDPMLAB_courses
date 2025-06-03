@@ -9,6 +9,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from modules.graph import create_graph, text_spliter, embed
 
+# ROOT_PATH 資源請求的根路徑: 適用於向代理多服務情境
+ROOT_PATH = os.environ.get("ROOT_PATH", None)
 
 graph = create_graph()
 
@@ -111,7 +113,6 @@ def get_random_question() -> str:
     questions = [
         "今天高雄天氣如何？",
         "目前新台幣對美元匯率是多少？",
-        "整理最近的 AI 相關新聞",
     ]
     return random.choice(questions)
 
@@ -119,7 +120,7 @@ def get_random_question() -> str:
 with gr.Blocks(title="RAG Agent Demo") as demo:
     with gr.Row():
         with gr.Column(scale=2):
-            gr.Markdown("# RAG Agent Interface")
+            gr.Markdown(f"# RAG Agent Interface\nRAG Agent 是一款結合大型語言模型(LLM)與檢索增強生成(RAG)的智慧代理，具備網路搜尋、知識檢索與答案優化能力。")
         with gr.Column(scale=1):
             gr.HTML("""
                 <a href="https://github.com/alsk1369854/SDPMLAB_courses/tree/master/rag-agent" target="_blank" style="text-decoration: none;">
@@ -142,14 +143,16 @@ with gr.Blocks(title="RAG Agent Demo") as demo:
             gr.Markdown("## Agent Chat")
             final_answer = gr.Textbox(show_label=True, label="Final Answer", interactive=False)
             trace_chatbot = gr.Chatbot(label="Agent Trace", type="messages")
-            question_input = gr.Textbox(show_label=False, placeholder="Enter your question...", value=get_random_question())
+            question_input = gr.Textbox(show_label=True, label="Question", placeholder="Enter your question...", value=get_random_question())
 
         with gr.Column(scale=1):
             gr.Markdown("## Knowledge Files")
-            download_demo = gr.DownloadButton(label="DEMO_RAG_學年開課.md", value="./DEMO_RAG_學年開課.md")
+            use_demo_btn = gr.Button("Use Demo File")
             file_upload = gr.File(label="Upload Knowledge Documents (.pdf, .txt, .md)", file_count="multiple", type="filepath")
     
-    download_demo.click(lambda: "有哪些課程是由資訊工程學系開設的？", None, question_input)
+    def on_download_demo_click() -> tuple[str, list[str]]:
+        return  "有哪些課程是由資訊工程學系開設的？", ["./學年開課資訊_RAG_DEMO.md"]
+    use_demo_btn.click(on_download_demo_click, None, [question_input, file_upload])
 
     def on_question_input_submit(question: str, history: list[dict]) -> tuple[str, list[dict]]:
         return get_random_question(), [{"role": "user", "content": question}]
@@ -178,8 +181,14 @@ with gr.Blocks(title="RAG Agent Demo") as demo:
         outputs=[final_answer, trace_chatbot],
     )
 
-
 if __name__ == "__main__":
     # for event in graph.stream({"question": "今天高雄天氣如何？"}, stream_mode="debug"):
     #     print(event)
-    demo.launch(server_name="0.0.0.0", server_port=18080, share=True)
+
+    
+    demo.launch(
+        server_name="0.0.0.0", 
+        server_port=18080, 
+        share=True,
+        root_path=ROOT_PATH
+    )
