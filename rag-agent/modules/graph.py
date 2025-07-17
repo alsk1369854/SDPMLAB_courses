@@ -169,6 +169,7 @@ def retrieve_documents(state: GraphState):
     vector_store = state.vector_store
     max_reference_documents = state.max_reference_documents
 
+    # 生成檢索關鍵詞
     llm_with_struct = llm.with_structured_output(RetrieveQueryOutput)
     environment = get_environment()
     messages = RETRIEVE_QUERY_CHAT_TEMPLATE.invoke({
@@ -176,6 +177,8 @@ def retrieve_documents(state: GraphState):
         "environment": environment,
     }).to_messages()
     answer = llm_with_struct.invoke(messages)
+    
+    # 根據關鍵詞檢所本地知識庫
     retrieved_documents = retrieve_tool.invoke({"vector_store": vector_store, "query": answer.query, "k": max_reference_documents})
     return {"documents": retrieved_documents, "retrieve_query": answer.query}
 
@@ -217,12 +220,16 @@ def related_guard(state: GraphState):
     environment = get_environment()
     filtered_docs = []
     for doc in documents:
+        
+        # 檢查檢索結果是否與問題相關
         messages = RELATED_GUARD_CHAT_TEMPLATE.invoke({
             "document": doc,
             "question": question,
             "environment": environment,
         }).to_messages()
         anser = llm_with_struct.invoke(messages)
+        
+        # 加入至候選參考知識文件中
         if anser.related.lower() == "yes":
             filtered_docs.append(doc)
 
@@ -270,10 +277,12 @@ def web_search(state: GraphState):
     documents = state.documents
     max_reference_documents = state.max_reference_documents
 
+    # 檢查先前檢所的私有文件是否已滿足參考文件數量
     documents_len = len(documents)
     if documents_len >= max_reference_documents:
         return {}
-
+    
+    # 生成網路搜尋查詢語句
     llm_with_struct = llm.with_structured_output(WebSearchQueryOutput)
     environment = get_environment()
     messages = WEB_SEARCH_QUERY_CHAT_TEMPLATE.invoke({
@@ -281,6 +290,8 @@ def web_search(state: GraphState):
         "environment": environment,
     }).to_messages()
     answer = llm_with_struct.invoke(messages)
+    
+    # 根據查詢語句進行網路搜尋
     search_docs = search_tool.invoke({"query": answer.query, "k": max_reference_documents - documents_len})
     documents.extend(search_docs)
     return {"documents": documents, "web_search_query": answer.query}
@@ -324,12 +335,14 @@ def answer_generation(state: GraphState):
     prev_answer_suggestion = state.explanation
     max_retries = state.max_retries
 
+    # 將檢索結果整理為參考資料格式
     doc_texts = []
     for doc in documents:
         doc_from = "web" if "link" in doc.metadata else "local"
         doc_texts.append(f"Document(from={doc_from}, text={doc.page_content})")
     context = "\n".join(doc_texts)
-
+    
+    # 生成回答
     environment = get_environment()
     messages = ANSWER_GENERATION_CHAT_TEMPLATE.invoke({
         "prev_answer": prev_answer,
@@ -397,14 +410,14 @@ def answer_guard(state: GraphState):
     answer = state.answer
     documents = state.documents
 
-    llm_with_struct = llm.with_structured_output(AnswerGuardOutput)
-
+    # 將檢索結果整理為參考資料格式
     doc_texts = []
     for doc in documents:
         doc_from = "web" if "link" in doc.metadata else "local"
         doc_texts.append(f"Document(from={doc_from}, text={doc.page_content})")
     context = "\n".join(doc_texts)
 
+    # 檢查本次生成的回答是否有效
     environment = get_environment()
     messages = ANSWER_GUARD_CHAT_TEMPLATE.invoke({
         "question": question,
@@ -412,7 +425,10 @@ def answer_guard(state: GraphState):
         "answer": answer,
         "environment": environment,
     }).to_messages()
+    llm_with_struct = llm.with_structured_output(AnswerGuardOutput)
     result = llm_with_struct.invoke(messages)
+    
+    # 根據評分結果決定是否需要重新生成回答
     explanation = result.explanation
     if result.result.lower() == "yes":
         return {"retry": False, "explanation": explanation}
@@ -449,6 +465,7 @@ def create_graph():
         "retrieve_documents",
         "related_guard"
     )
+    # 條件邊：檢索結果是否足夠
     workflow.add_conditional_edges(
         "related_guard",
         documents_router,
@@ -465,6 +482,7 @@ def create_graph():
         "answer_generation",
         "answer_guard"
     )
+    # 條件邊：回答是否滿足要求
     workflow.add_conditional_edges(
         "answer_guard",
         answer_guard_router,
