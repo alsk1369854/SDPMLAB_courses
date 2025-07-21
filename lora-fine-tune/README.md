@@ -20,3 +20,11 @@ export SAVE_PATH=hf_models/Llama-3.2-3B-Instruct
 export MODEL_NAME=meta-llama/Llama-3.2-3B-Instruct
 nohup bash -c "huggingface-cli download ${MODEL_NAME} --local-dir ${SAVE_PATH}" &
 ```
+
+### Gemma3 1B
+```bash
+export HF_TOKEN=<your-huggingface-token>
+export SAVE_PATH=hf_models/gemma-3-1b-it
+export MODEL_NAME=google/gemma-3-1b-it
+nohup bash -c "huggingface-cli download ${MODEL_NAME} --local-dir ${SAVE_PATH}" &
+```
